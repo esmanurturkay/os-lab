@@ -8,7 +8,7 @@
 import { useEffect, useReducer } from "react";
 import type { CapabilityCatalog } from "../health/capabilities";
 
-export type LabId = "android" | "windows" | "linux" | "ios" | "macos";
+export type LabId = "android" | "windows" | "linux" | "ios" | "macos" | "source";
 export type LabState = "ready" | "needs-setup" | "unavailable";
 
 export interface HostTool {
@@ -68,12 +68,16 @@ export interface LabStatus {
 export interface LabRequest {
   lab: LabId;
   action: string;
+  options?: Record<string, unknown>;
   profile?: string;
   cpus?: string;
   ram?: string;
   disk?: string;
   device?: string;
   wslDistro?: string;
+  clickPid?: number;
+  clickX?: number;
+  clickY?: number;
 }
 export interface SetupDetails {
   dependencies: string[];
@@ -98,7 +102,7 @@ export interface LabPlan {
   setup: SetupDetails | null;
   display: string;
 }
-export type JobState = "running" | "succeeded" | "failed" | "cancelled" | "timed-out";
+export type JobState = "running" | "succeeded" | "failed" | "cancelled" | "timed-out" | "interrupted";
 export interface LabJob {
   id: string;
   label: string;
@@ -134,6 +138,55 @@ export interface AndroidLogs {
   logs: string[];
   running: boolean;
 }
+/** One installed, available iOS Simulator device (console/oslab.py::ios_simulator). */
+export interface IosSimulatorDevice {
+  udid: string;
+  name: string;
+  runtime: string;
+  state: string;
+}
+export interface IosSimulatorInfo {
+  available: boolean;
+  reason: string | null;
+  devices: IosSimulatorDevice[];
+  runtimes: string[];
+  booted: IosSimulatorDevice[];
+  configuredDevice: string | null;
+}
+export interface MacWindow {
+  windowId: number;
+  pid: number;
+  app: string;
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export interface MacAppsInfo {
+  available: boolean;
+  reason: string | null;
+  screenRecording: boolean;
+  windows: MacWindow[];
+}
+export interface MacElement {
+  role: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export interface MacElementsInfo {
+  windowId: number;
+  app: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  elements: MacElement[];
+}
+export interface MacControlState {
+  armed: boolean;
+  expiresInSec: number;
+}
 export interface Report {
   name: string;
   url: string;
@@ -142,6 +195,69 @@ export interface Hook {
   name: string;
   path: string;
   code: string;
+}
+
+export interface CleanupStatus {
+  state: LabState;
+  platform?: { id: string; label: string; supported: boolean };
+  reasons: string[];
+  requirements: { id: string; label: string; found: boolean; hint: string; detail: string }[];
+  capabilities: { id: string; label: string; found: boolean; detail: string }[];
+}
+export interface CleanupEntry {
+  id: string; name: string; category: string; risk: string; hint: string; impact: string;
+  defaultSelected: boolean; needsPrivilege: boolean;
+  paths: { template: string; path: string | null; reason: string; source?: string }[];
+}
+export interface CleanupScan {
+  cancelled: boolean;
+  entries: { id: string; name: string; category: string; risk: string; sizeBytes: number; files: number; folders: number; unreadable: string[]; paths: { path: string | null; reason: string; source?: string; sizeBytes: number; error: string | null }[] }[];
+  totals: { sizeBytes: number; files: number; folders: number; unreadable: number };
+}
+export interface CleanupPlan {
+  planId: string; mode: "trash" | "delete"; expiresAt: number;
+  items: { entryId: string; entryName: string; path: string | null; status: string; code: string; reason: string; source?: string; sizeBytes: number; files: number; folders: number }[];
+  totals: { ready: number; skipped: number; bytes: number };
+}
+export interface CleanupResult {
+  planId: string; mode: "trash" | "delete"; cancelled: boolean;
+  results: { entryId: string; entryName: string; path: string | null; status: string; code: string; reason: string; source?: string; error: string | null; bytes: number; trashPath: string | null }[];
+  totals: { items: number; trashed: number; deleted: number; skipped: number; failed: number; bytes: number };
+}
+export interface CleanupJob {
+  id: string; kind: "scan" | "plan" | "clean"; state: "running" | "done" | "cancelled" | "failed";
+  request: { entryIds?: string[]; mode?: "trash" | "delete"; planId?: string };
+  progress: Record<string, string | number> | null;
+  result: CleanupScan | CleanupPlan | CleanupResult | null;
+  error: string | null;
+}
+export interface CleanupHistory { entries: { id: number; result: CleanupResult; hmac: string }[]; total: number; verified: boolean }
+
+export interface CleanupContainerCapabilities {
+  available: boolean; engine: "docker" | "podman" | null; reason: string;
+  actions: { id: string; risk: string; defaultSelected: false; pruneArgv: string[] }[];
+}
+export interface CleanupContainerPreview {
+  previewId: string; actionId: string; engine: "docker" | "podman"; risk: string;
+  candidateCount: number; candidates: Record<string, unknown>[]; command: string[]; expiresAt: number;
+}
+export interface CleanupContainerResult {
+  actionId: string; engine: string; status: "completed" | "failed"; error?: string;
+  candidateCount?: number; command?: string[]; output?: string; bytesRemoved: number | null;
+}
+export interface CleanupVMInventory {
+  cancelled: boolean;
+  items: { id: string; name: string; path: string; sizeBytes: number; sizeOnDiskBytes: number | null; files: number; reportOnly: true }[];
+  unavailable: { id: string; root: string | null; reason: string }[];
+}
+export interface CleanupAuxJob<T> {
+  id: string; kind: "container-prune" | "vm-scan" | "leftovers"; state: "running" | "done" | "cancelled" | "failed";
+  result: T | null; error: string | null;
+}
+export interface CleanupCrossLeftovers {
+  available: boolean; reason?: string; cancelled: boolean;
+  items: { id: string; name: string; path: string; status: string; confidence: number; rule: string; sizeBytes: number; sizeOnDiskBytes: number | null; reportOnly: true }[];
+  inventorySources?: string[]; inventoryErrors?: string[]; unreadable?: string[];
 }
 
 export class ApiError extends Error {
@@ -180,12 +296,56 @@ export interface ContentState {
   updateAvailable?: boolean;
 }
 
+export interface AppUpdateState {
+  installed: string | null;
+  latest: string | null;
+  updateAvailable: boolean;
+  checkedAt: number | null;
+  platform: string | null;
+  kind: string;
+  releaseUrl: string | null;
+  asset: { name: string; url: string } | null;
+  supported: boolean;
+  offline: boolean;
+  installing: boolean;
+  install: {
+    phase: "downloading" | "opening" | "done" | "error";
+    error: string | null;
+    path: string | null;
+    version?: string;
+  } | null;
+}
+
 export const api = {
+  cleanupStatus: () => call<CleanupStatus>("/api/cleanup/status"),
+  cleanupCatalog: () => call<{ platform: string; entries: CleanupEntry[] }>("/api/cleanup/catalog"),
+  cleanupHistory: () => call<CleanupHistory>("/api/cleanup/history"),
+  cleanupJobs: () => call<{ jobs: CleanupJob[] }>("/api/cleanup/jobs"),
+  cleanupScan: (entryIds: string[]) => post<CleanupJob>("/api/cleanup/scan", { entryIds }),
+  cleanupPlan: (entryIds: string[], mode: "trash" | "delete") => post<CleanupJob>("/api/cleanup/plan", { entryIds, mode }),
+  cleanupClean: (planId: string) => post<CleanupJob>("/api/cleanup/clean", { planId }),
+  cleanupJob: (id: string) => call<CleanupJob>(`/api/cleanup/jobs/${encodeURIComponent(id)}`),
+  cleanupCancel: (id: string) => post<CleanupJob>(`/api/cleanup/jobs/${encodeURIComponent(id)}/cancel`),
+  cleanupContainers: () => call<CleanupContainerCapabilities>("/api/cleanup/containers"),
+  cleanupContainerPreview: (actionId: string) => post<CleanupContainerPreview>("/api/cleanup/containers/preview", { actionId }),
+  cleanupContainerPrune: (previewId: string) => post<CleanupAuxJob<CleanupContainerResult>>("/api/cleanup/containers/prune", { previewId }),
+  cleanupVMScan: () => post<CleanupAuxJob<CleanupVMInventory>>("/api/cleanup/vms/scan"),
+  cleanupCrossLeftovers: () => post<CleanupAuxJob<CleanupCrossLeftovers>>("/api/cleanup/leftovers/scan"),
+  cleanupAuxJob: <T>(id: string) => call<CleanupAuxJob<T>>(`/api/cleanup/jobs/${encodeURIComponent(id)}`),
   health: () => call<{ status: string; version: string; console: boolean }>("/api/health"),
   host: () => call<{ host: HostInfo; labs: LabStatus[] }>("/api/host"),
   capabilities: () => call<CapabilityCatalog>("/api/capabilities"),
   config: (lab: LabId) => call<LabConfig>(`/api/labs/${lab}/config`),
   monitor: (lab: LabId) => call<LabMonitor>(`/api/labs/${lab}/monitor`),
+  iosSimulator: () => call<IosSimulatorInfo>(`/api/labs/ios/simulator`),
+  iosScreenshotUrl: "/api/labs/ios/screenshot",
+  macosApps: () => call<MacAppsInfo>("/api/labs/macos/apps"),
+  macosAppScreenshotUrl: (windowId: number) => `/api/labs/macos/apps/${windowId}/screenshot`,
+  macosElements: (windowId: number) => call<MacElementsInfo>(`/api/labs/macos/apps/${windowId}/elements`),
+  macosControl: () => call<MacControlState>("/api/labs/macos/control"),
+  macosControlArm: (armed: boolean) => post<MacControlState>("/api/labs/macos/control", { armed }),
+  macosClick: (pid: number, x: number, y: number) =>
+    post<{ ok: boolean; pid: number; x: number; y: number }>("/api/labs/macos/click", { pid, x, y }),
   plan: (request: LabRequest) => post<{ plan: LabPlan; token: string }>("/api/labs/plan", { request }),
   start: (request: LabRequest, token: string) => post<LabJob>("/api/labs/start", { request, token }),
   jobs: () => call<{ jobs: LabJob[] }>("/api/jobs"),
@@ -206,6 +366,10 @@ export const api = {
   contentUpdate: (hooks: boolean) => post<ContentState>("/api/content/update", { hooks }),
   contentReset: () => post<ContentState>("/api/content/reset"),
   contentCompanies: () => call<{ companies: unknown[]; source: "downloaded" | "bundled"; version: string | null }>("/api/content/companies"),
+  // Signed app releases (console/app_update.py): only the desktop app reports a version
+  appUpdateStatus: () => call<AppUpdateState>("/api/app/update"),
+  appUpdateCheck: () => post<AppUpdateState>("/api/app/update/check"),
+  appUpdateInstall: () => post<AppUpdateState>("/api/app/update/install"),
   upload: async (file: File) => {
     const form = new FormData();
     form.append("apk", file);
@@ -259,7 +423,7 @@ export function createStore<T>(load: () => Promise<T>, intervalMs: number) {
   }
   function use() {
     const [, rerender] = useReducer((n: number) => n + 1, 0);
-    useEffect(() => subscribe(rerender), []);
+    useEffect(() => import.meta.env.PUBLIC_SITE_MODE === "pages" ? undefined : subscribe(rerender), []);
     return { data, error, refresh };
   }
   return { use, refresh, get: () => data };

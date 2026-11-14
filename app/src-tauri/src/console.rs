@@ -88,7 +88,7 @@ impl Console {
         healthy(port).then(|| url_for(port))
     }
 
-    pub fn start(&self, root: &Path, source: Source, log: &Path, data_dir: &Path, content_dir: &Path) -> Result<Started, String> {
+    pub fn start(&self, root: &Path, source: Source, log: &Path, data_dir: &Path, content_dir: &Path, app_version: &str) -> Result<Started, String> {
         if let Some(url) = self.running_url() {
             return Ok(Started {
                 url,
@@ -121,6 +121,8 @@ impl Console {
             .env("PYTHONUNBUFFERED", "1")
             .env("PYTHONIOENCODING", "utf-8")
             .env("OSLAB_CONTENT_DIR", content_dir)
+            // Lets the dashboard compare this build with the published release (console/app_update.py).
+            .env("OSLAB_APP_VERSION", app_version)
             .stdin(Stdio::null())
             .stdout(Stdio::from(out))
             .stderr(Stdio::from(err));
@@ -200,7 +202,7 @@ pub fn healthy(port: u16) -> bool {
     head[..n].starts_with(b"HTTP/1.") && head[..n].windows(3).any(|w| w == b"200")
 }
 
-/// The first Python 3.9+ on PATH. On Windows the `py` launcher comes first.
+/// The first Python supported by every bundled lab. On Windows the `py` launcher comes first.
 pub fn find_python(data_dir: &Path) -> Result<String, String> {
     let managed = crate::python_runtime::saved_python(data_dir);
     let host: &[&str] = if cfg!(windows) { &["py", "python", "python3"] } else { &["python3", "python"] };
@@ -209,7 +211,7 @@ pub fn find_python(data_dir: &Path) -> Result<String, String> {
         if name == "py" {
             cmd.arg("-3");
         }
-        cmd.args(["-c", "import sys; print(sys.version_info >= (3, 9))"]);
+        cmd.args(["-c", "import sys; print(sys.version_info >= (3, 11))"]);
         hide_window(&mut cmd);
         if let Ok(out) = cmd.output() {
             if out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "True" {
@@ -217,7 +219,7 @@ pub fn find_python(data_dir: &Path) -> Result<String, String> {
             }
         }
     }
-    Err("Python 3.9 or newer was not found. Choose Get Python to install a managed copy for os-lab, then retry.".to_string())
+    Err("Python 3.11 or newer was not found. Choose Get Python to install a managed copy for os-lab, then retry.".to_string())
 }
 
 pub fn tail(path: &Path, lines: usize) -> String {

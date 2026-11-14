@@ -113,7 +113,7 @@ def test_artifacts_cannot_escape_folder(web_server):
 def test_host_reports_every_lab(web_server):
     data = json.loads(urllib.request.urlopen(f"{web_server}/api/host").read().decode("utf-8"))
     assert data["host"]["os"]
-    assert [lab["id"] for lab in data["labs"]] == ["android", "windows", "linux", "ios", "macos"]
+    assert [lab["id"] for lab in data["labs"]] == ["android", "windows", "linux", "ios", "macos", "source"]
     for lab in data["labs"]:
         assert lab["state"] in ("ready", "needs-setup", "unavailable")
 
@@ -122,6 +122,18 @@ def test_health_capabilities_are_served_by_console(web_server):
     data = json.loads(urllib.request.urlopen(f"{web_server}/api/capabilities").read().decode("utf-8"))
     assert len(data["platforms"]) == 3
     assert any(item.get("lab") == "ios" for group in data["groups"] for item in group["items"])
+
+
+def test_scope_endpoint_reports_the_declared_scope(web_server, tmp_path, monkeypatch):
+    path = tmp_path / "scope.json"
+    monkeypatch.setenv("OSLAB_SCOPE_FILE", str(path))
+    data = json.loads(urllib.request.urlopen(f"{web_server}/api/scope").read().decode("utf-8"))
+    assert data["valid"] is False and data["declared"] is False and "No lab scope is declared" in data["error"]
+    path.write_text(json.dumps({"version": 1, "name": "web test lab", "authorization": "Owned fixtures",
+                                "hosts": ["127.0.0.1"], "devices": ["emulator-*"]}), encoding="utf-8")
+    data = json.loads(urllib.request.urlopen(f"{web_server}/api/scope").read().decode("utf-8"))
+    assert data["valid"] is True and data["name"] == "web test lab"
+    assert data["counts"] == {"hosts": 1, "packages": 0, "devices": 1, "paths": 0}
 
 
 def test_lab_start_requires_a_previewed_plan(web_server):
@@ -169,3 +181,10 @@ def test_content_posts_need_the_oslab_header_and_respect_the_offline_switch(web_
     assert _content_post(f"{web_server}/api/content/update").code == 403
     resp = _content_post(f"{web_server}/api/content/check", headers={"X-OSLab": "1"})
     assert resp.code == 400 and b"switched off" in resp.read()
+
+
+def test_app_update_status_is_reported_without_network(web_server):
+    data = json.load(urllib.request.urlopen(f"{web_server}/api/app/update"))
+    assert "supported" in data and "updateAvailable" in data
+    assert data["install"] is None
+

@@ -10,6 +10,8 @@
 **/config.env
 !**/config.env.example
 android-lab/lab/.sim-device
+# Your declared lab scope (start from console/scope.example.json)
+/scope.json
 ios-lab/mac/config.env
 ios-lab/mac/.sim-device
 ios-lab/mac/.appium.pid
@@ -46,6 +48,7 @@ lat.md/.cache/
 .private/
 teached/**/*
 dashboard/node_modules/
+dashboard/.check-source-pages/
 dashboard/test-results/
 dashboard/playwright-report/
 # Release credentials (Apple signing + notarization). Only the READMEs are tracked.
